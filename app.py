@@ -1,0 +1,213 @@
+import streamlit as st 
+from dotenv import load_dotenv
+from langchain.document_loaders import PyPDFLoader
+from PyPDF2 import PdfReader
+from langchain.schema.document import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import FAISS, Chroma
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain, LLMChain
+from langchain.chat_models import ChatOpenAI
+from langchain.llms import OpenAI
+from langchain.callbacks.streaming_stdout_final_only import FinalStreamingStdOutCallbackHandler
+from langchain.prompts import PromptTemplate
+from htlmTemplates import css, bot_template, user_template
+from langchain.chains.combine_documents.refine import RefineDocumentsChain
+from typing import Dict, Any
+
+
+def get_documents(pdfs):
+    # text = ""
+    # for pdf in pdfs:
+    #     pdf_loader = PyPDFLoader(pdf)
+    #     pages = pdf_loader.load()
+    #     for page in pages:
+    #         text += page.page_content
+    #     text += "/n"
+    # return text 
+    doc_lists = []
+    for pdf in pdfs:
+        pdf_reader = PdfReader(pdf)
+        doc_list = []
+        meta = pdf_reader.metadata
+        for i, page in enumerate(pdf_reader.pages):
+            text = page.extract_text()
+            doc_list.append(Document(page_content = text, metadata={"source": meta.title, "page": i+1}))
+        doc_lists += doc_list
+    return doc_list
+
+def get_text_chunks(text_spliter, docs):
+    texts = text_spliter.split_documents(docs)
+    return texts
+
+def get_vectorstore(embedding, documents):
+
+#    vectorstore = FAISS.from_documents(texts=text_chunks, embedding=embeddings)
+    vectorstore = Chroma.from_documents(documents=documents, embedding=embedding)
+    return vectorstore
+
+def create_refine_chain():
+    # This controls how each document will be formatted. Specifically,
+    # it will be passed to `format_document` - see that function for more
+    # details.
+    document_prompt = PromptTemplate(
+        input_variables=["page_content"],
+        template="{page_content}"
+    )
+    document_variable_name = "context"
+    llm = OpenAI()
+    # The prompt here should take as an input variable the
+    # `document_variable_name`
+    prompt = PromptTemplate.from_template(
+        "Summarize this content: {context}"
+    )
+    initial_llm_chain = LLMChain(llm=llm, prompt=prompt)
+    initial_response_name = "prev_response"
+    # The prompt here should take as an input variable the
+    # `document_variable_name` as well as `initial_response_name`
+    prompt_refine = PromptTemplate.from_template(
+        "Here's your first summary: {prev_response}. "
+        "Now add to it based on the following context: {context}"
+    )
+    refine_llm_chain = LLMChain(llm=llm, prompt=prompt_refine)
+    chain = RefineDocumentsChain(
+        initial_llm_chain=initial_llm_chain,
+        refine_llm_chain=refine_llm_chain,
+        document_prompt=document_prompt,
+        document_variable_name=document_variable_name,
+        initial_response_name=initial_response_name,
+    )
+    return chain
+
+class AnswerConversationBufferMemory(ConversationBufferMemory):
+    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
+        return super(AnswerConversationBufferMemory, self).save_context(inputs,{'response': outputs['answer']})
+
+
+def create_conversation_chain(vectorstore, return_source = True):
+    llm = ChatOpenAI(
+        temperature = 0,
+        model_name = "gpt-3.5-turbo",
+        streaming = True,
+        callbacks = [FinalStreamingStdOutCallbackHandler()]
+    )
+    memory = AnswerConversationBufferMemory(memory_key='chat_history', return_messages=True)
+
+    # if return_source:
+    #     refine_doc_chain = create_refine_chain()
+    #     template = (
+    #         "Combine the chat history and follow up question into "
+    #         "a standalone question. Chat History: {chat_history}"
+    #         "Follow up question: {question}"
+    #     )
+    #     prompt = PromptTemplate.from_template(template)
+    #     llm = OpenAI()
+    #     question_generator_chain = LLMChain(llm=llm, prompt=prompt)
+    #     conversation_chain = ConversationalRetrievalChain(
+    #         combine_docs_chain=refine_doc_chain,
+    #         retriever=vectorstore.as_retriever(),
+    #         memory=memory,
+    #         question_generator=question_generator_chain,
+    #         return_source_documents=True
+    #     )
+    # else:
+    #     conversation_chain = ConversationalRetrievalChain.from_llm(
+    #     llm=llm,
+    #     retriever=vectorstore.as_retriever(),
+    #     memory = memory,
+    # )
+    conversation_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=vectorstore.as_retriever(),
+        memory = memory,
+        return_source_documents = True
+    )
+    return conversation_chain
+
+def handle_userinput(user_question):
+#    st.write(st.session_state.conversation_chain.input_keys)
+    response = st.session_state.conversation_chain({'question': user_question})
+    st.session_state.chat_history = response['chat_history']
+#    st.write(type(response["source_documents"][0]))
+    st.session_state.source_documents = response['source_documents']
+    for i, message in enumerate(st.session_state.chat_history):
+        if i % 2 == 0:
+            st.write(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
+        if i % 2 == 1:
+            source = " ".join(st.session_state.source_documents[i//2].metadata["source"].split(" ")[:5])
+            page = str(st.session_state.source_documents[i//2].metadata["page"])
+            displayed_string = f"{message.content} <br /> Further information can be found in <i>{source}...</i>, page {page}"
+            st.write(bot_template.replace("{{MSG}. Further information can be found in {source}..., page {page}}", displayed_string), unsafe_allow_html=True)
+
+def main():
+    load_dotenv()
+    st.set_page_config(page_title="Study on steroids", page_icon=":books:")
+
+    col1, col2 = st.columns(2)
+
+    with col2:
+
+        st.write(css, unsafe_allow_html=True)
+
+        st.header("Chat with your data!")
+
+        if "conversation_chain" not in st.session_state:
+            st.session_state.conversation_chain = None
+
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = None
+
+        instruction = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer. Keep the answer as concise as possible. Always say "thanks for asking!" at the end of the answer."""
+        
+    #    instruction = st.text_input("Enter your instruction")
+        
+        # Build prompt
+        template = instruction + """ 
+        {context}
+        Question: {question}
+        Helpful Answer:"""
+        QA_CHAIN_PROMPT = PromptTemplate.from_template(template)
+
+        user_question = st.text_input("Ask me about your docs!")
+        if user_question:
+            handle_userinput(user_question)
+
+    with st.sidebar:
+        st.subheader("Your documents")
+        pdf_docs = st.file_uploader("Upload your PDFs here and click on 'Process'",type='pdf', accept_multiple_files=True)  
+
+        if st.button("Process PDFs"):
+            with st.spinner("Processing"):
+                # Get the texts
+                docs = get_documents(pdf_docs)
+
+                # Divide them into text chunks            
+                # text_spliter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+                #     chunk_size = 200, chunk_overlap = 20
+                # )
+                text_spliter = RecursiveCharacterTextSplitter(
+                    chunk_size = 1000, chunk_overlap = 100
+                )
+                documents = get_text_chunks(text_spliter=text_spliter, docs=docs)
+
+                 # Create vector store   
+                embedding = OpenAIEmbeddings()
+                vectorstore = get_vectorstore(embedding=embedding, documents=documents) 
+
+                # Create conversation chain
+                st.session_state.conversation_chain = create_conversation_chain(vectorstore)
+
+
+
+           # videos = st.file_uploader("Upload your videos here", accept_multiple_files=True)
+        # if st.button("Process videos"):
+        #     with st.spinner("Processing"):
+        #         # Get the texts
+        #         # Divide them into text chunks
+        #         # Create vector store   
+
+
+
+if __name__ == '__main__':
+    main()
