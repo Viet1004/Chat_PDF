@@ -1,0 +1,4 @@
+langchain
+htmlTemplates
+pdfplumber
+openai
