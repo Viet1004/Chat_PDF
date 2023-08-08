@@ -1,5 +1,4 @@
 import streamlit as st 
-from dotenv import load_dotenv
 from langchain.document_loaders import PyPDFLoader
 from PyPDF2 import PdfReader
 from langchain.schema.document import Document
@@ -194,7 +193,6 @@ def handle_userinput(user_question):
                     st.write(source_doc.page_content[:30]+ f"... from {source}, page {page}")
 
 def main():
-#    load_dotenv()
 
     st.set_page_config(page_title="Study with me", page_icon=":books:", layout="wide")
     if "source_documents" not in st.session_state:
