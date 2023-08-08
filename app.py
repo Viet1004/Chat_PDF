@@ -1,5 +1,6 @@
 import streamlit as st 
 from langchain.document_loaders import PyPDFLoader
+#from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain.schema.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
@@ -193,7 +194,7 @@ def handle_userinput(user_question):
                     st.write(source_doc.page_content[:30]+ f"... from {source}, page {page}")
 
 def main():
-
+#    load_dotenv()
     st.set_page_config(page_title="Study with me", page_icon=":books:", layout="wide")
     if "source_documents" not in st.session_state:
         st.session_state.source_documents = []
@@ -204,6 +205,7 @@ def main():
         api_container = st.empty()
         openai.api_key = api_container.text_input("Enter an OpenAI API key:")
         if openai.api_key != "":
+            openai_api_key = openai.api_key
             api_container.empty()
             st.write("API is registered, upload your documents below.")
 
