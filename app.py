@@ -232,7 +232,7 @@ def main():
                 documents = get_text_chunks(text_spliter=text_spliter, docs=docs)
 
                  # Create vector store   
-                embedding = OpenAIEmbeddings()
+                embedding = OpenAIEmbeddings(openai_api_key=openai_api_key)
                 vectorstore = get_vectorstore(embedding=embedding, documents=documents) 
 
                 # Create conversation chain
