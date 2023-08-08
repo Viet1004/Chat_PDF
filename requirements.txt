@@ -1,4 +1,3 @@
-langchain
-htmlTemplates
-pdfplumber
-openai
+langchain==0.0.257
+pdfplumber==0.10.2
+openai==0.27.8
