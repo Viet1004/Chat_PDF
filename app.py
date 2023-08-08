@@ -133,7 +133,6 @@ def create_conversation_chain(vectorstore, openai_api_key, return_source = True)
     #     memory = memory,
     # )
 
-    llm = OpenAI(temperature=0)
     metadata_field_info = [
         AttributeInfo(
             name="source",
