@@ -99,8 +99,9 @@ class AnswerConversationBufferMemory(ConversationBufferMemory):
         return super(AnswerConversationBufferMemory, self).save_context(inputs,{'response': outputs['answer']})
 
 
-def create_conversation_chain(vectorstore, return_source = True):
+def create_conversation_chain(vectorstore, openai_api_key, return_source = True):
     llm = ChatOpenAI(
+        openai_api_key=openai_api_key,
         temperature = 0,
         model_name = "gpt-3.5-turbo",
         streaming = True,
@@ -240,7 +241,7 @@ def main():
                 vectorstore = get_vectorstore(embedding=embedding, documents=documents) 
 
                 # Create conversation chain
-                st.session_state.conversation_chain = create_conversation_chain(vectorstore)
+                st.session_state.conversation_chain = create_conversation_chain(vectorstore, openai_api_key=openai_api_key)
             
         st.write("Tips: Give a short description of your docs might help. Otherwise, leave it blank. Specify document and page number for more precise results")
     # Columns
