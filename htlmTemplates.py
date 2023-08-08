@@ -30,7 +30,7 @@ bot_template = '''
     <div class="avatar">
         <img src="https://4.bp.blogspot.com/-cvjeZMIgcJQ/VzD8PkZvO2I/AAAAAAAA_2k/LaSQWXMFG1A1VMm0wSK0MVppDsOGs_s-wCKgB/s1600/doraemon.png" style="max-height: 78px; max-width: 78px; border-radius: 50%; object-fit: cover;">
     </div>
-    <div class="message">{{MSG}. Further information can be found at {source}..., page {page}}  
+    <div class="message">{{MSG}}</div>  
 </div>
 '''
 
